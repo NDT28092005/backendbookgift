@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+    'allowed_origins' => ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173','https://bebookgift-hugmbshcgaa0b4d6.eastasia-01.azurewebsites.net/'],
 
     'allowed_origins_patterns' => [],
 
