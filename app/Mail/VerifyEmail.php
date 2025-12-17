@@ -21,7 +21,7 @@ class VerifyEmail extends Mailable
 
     public function build()
     {
-        $verifyUrl = "http://localhost:5173/verify-email?user={$this->userId}&token={$this->token}";
+        $verifyUrl = "https://proud-mud-098aeae00.1.azurestaticapps.net/verify-email?user={$this->userId}&token={$this->token}";
 
         return $this->subject('Xác nhận email của bạn')
                     ->view('emails.verify-email')
