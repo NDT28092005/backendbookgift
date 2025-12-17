@@ -171,7 +171,7 @@ Route::post('/users', [UserController::class, 'store']);
 Route::put('/users/{user}', [UserController::class, 'update']);
 Route::delete('/users/{user}', [UserController::class, 'destroy']);
 Route::post('/users/{user}/avatar', [UserController::class, 'updateAvatar']);
-    Route::put('/users/{user}/password', [UserController::class, 'updatePassword']);
+Route::put('/users/{user}/password', [UserController::class, 'updatePassword']);
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);
 });

@@ -8,8 +8,6 @@ use App\Models\Message;
 use App\Models\Conversation;
 use App\Models\Occasion;
 use App\Models\Product;
-use App\Events\MessageSent;
-use App\Jobs\ProcessAiReply;
 use Illuminate\Support\Str;
 
 class ChatController extends Controller
