@@ -16,11 +16,30 @@ class GeminiGiftPreviewService
      */
     public function generate($paperDesc, $accessoryDesc, $cardDesc)
     {
-        // Dịch mô tả sang tiếng Anh để API v1 hỗ trợ
-        // Tạm thời dùng mô tả tiếng Anh cơ bản
+        // Dịch mô tả sang tiếng Anh để API hỗ trợ (Stability AI chỉ hỗ trợ tiếng Anh)
         $paperDescEn = $this->translateToEnglish($paperDesc);
         $accessoryDescEn = $this->translateToEnglish($accessoryDesc);
         $cardDescEn = $this->translateToEnglish($cardDesc);
+        
+        // Đảm bảo tất cả mô tả đều là tiếng Anh (kiểm tra lại sau khi translate)
+        if (empty($paperDescEn) || preg_match('/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i', $paperDescEn)) {
+            $paperDescEn = 'wrapping paper';
+        }
+        if (empty($accessoryDescEn) || preg_match('/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i', $accessoryDescEn)) {
+            $accessoryDescEn = 'decorative ribbon bow';
+        }
+        if (empty($cardDescEn) || preg_match('/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i', $cardDescEn)) {
+            $cardDescEn = 'greeting card';
+        }
+        
+        Log::info('Translated descriptions', [
+            'paper_original' => $paperDesc,
+            'paper_translated' => $paperDescEn,
+            'accessory_original' => $accessoryDesc,
+            'accessory_translated' => $accessoryDescEn,
+            'card_original' => $cardDesc,
+            'card_translated' => $cardDescEn
+        ]);
         
         $prompt = <<<PROMPT
 A high-quality product photography of a beautifully wrapped gift box.
@@ -126,7 +145,7 @@ PROMPT;
                         $response = Http::timeout(90)
                             ->withHeaders([
                                 'Authorization' => 'Bearer ' . $apiKey,
-                                'Accept' => 'image/png',
+                                'Accept' => 'application/json',
                             ])
                             ->asMultipart()
                             ->post($endpoint, $multipartData);
@@ -147,7 +166,21 @@ PROMPT;
                                 $imageData = base64_decode($json['artifacts'][0]['base64']);
                             }
                         } else {
-                            $imageData = $response->body();
+                            // v2beta với Accept: application/json sẽ trả về JSON
+                            try {
+                                $json = $response->json();
+                                if (isset($json['image'])) {
+                                    $imageData = base64_decode($json['image']);
+                                } elseif (isset($json['data'])) {
+                                    $imageData = base64_decode($json['data']);
+                                } else {
+                                    // Nếu không có image trong JSON, thử body
+                                    $imageData = $response->body();
+                                }
+                            } catch (\Exception $e) {
+                                // Nếu không parse được JSON, lấy body trực tiếp
+                                $imageData = $response->body();
+                            }
                         }
                         
                         if (empty($imageData)) {
@@ -164,23 +197,37 @@ PROMPT;
                         // Sử dụng asset() để đảm bảo URL đúng
                         return asset('storage/' . $path);
                     } else {
-                        $error = $response->json();
+                        // Xử lý error response
+                        $error = null;
+                        $errorBody = $response->body();
+                        
+                        try {
+                            $error = $response->json();
+                        } catch (\Exception $e) {
+                            $error = $errorBody;
+                        }
+                        
                         // Xử lý error có thể là string hoặc array
-                        if (isset($error['errors']) && is_array($error['errors'])) {
-                            $lastError = implode(', ', $error['errors']);
-                        } elseif (isset($error['message'])) {
-                            $lastError = $error['message'];
-                        } elseif (isset($error['errors'])) {
-                            $lastError = is_array($error['errors']) ? implode(', ', $error['errors']) : $error['errors'];
+                        $lastError = null;
+                        if (is_array($error)) {
+                            if (isset($error['errors']) && is_array($error['errors'])) {
+                                $lastError = implode(', ', $error['errors']);
+                            } elseif (isset($error['message'])) {
+                                $lastError = $error['message'];
+                            } elseif (isset($error['errors'])) {
+                                $lastError = is_array($error['errors']) ? implode(', ', $error['errors']) : (string)$error['errors'];
+                            } else {
+                                $lastError = 'Unknown error: ' . json_encode($error);
+                            }
                         } else {
-                            $lastError = 'Unknown error: ' . json_encode($error);
+                            $lastError = (string)$error;
                         }
                         
                         Log::warning('Stability AI endpoint failed', [
                             'endpoint' => $endpoint,
                             'status' => $response->status(),
                             'error' => $lastError,
-                            'full_response' => $error
+                            'error_body' => substr($errorBody, 0, 500)
                         ]);
                         continue; // Thử endpoint tiếp theo
                     }
@@ -195,7 +242,7 @@ PROMPT;
             }
             
             // Nếu tất cả endpoints đều fail
-            $errorMsg = is_array($lastError) ? implode(', ', $lastError) : (string)$lastError;
+            $errorMsg = is_array($lastError) ? implode(', ', $lastError) : (string)($lastError ?? 'Unknown error');
             throw new \Exception('Tất cả endpoints đều thất bại. Lỗi cuối: ' . $errorMsg);
             
         } catch (\Exception $e) {
@@ -228,28 +275,71 @@ PROMPT;
      */
     private function translateToEnglish($text)
     {
-        // Simple translation mapping for common gift terms
+        if (empty($text)) {
+            return 'default';
+        }
+        
+        // Extended translation mapping for common gift terms
         $translations = [
+            // Wrapping papers
             'giấy kraft' => 'kraft paper',
             'giấy gói' => 'wrapping paper',
-            'nơ' => 'bow',
+            'giấy bọc' => 'wrapping paper',
+            'giấy màu' => 'colored wrapping paper',
+            'giấy hoa' => 'floral wrapping paper',
+            'giấy kẻ sọc' => 'striped wrapping paper',
+            'giấy chấm bi' => 'polka dot wrapping paper',
+            'giấy vàng' => 'gold wrapping paper',
+            'giấy đỏ' => 'red wrapping paper',
+            'giấy xanh' => 'blue wrapping paper',
+            'giấy hồng' => 'pink wrapping paper',
+            'knaf' => 'kraft', // Fix typo
+            
+            // Accessories
+            'nơ' => 'ribbon bow',
+            'nơ ruy băng' => 'ribbon bow',
             'ruy băng' => 'ribbon',
+            'dây ruy băng' => 'ribbon',
+            'nơ đỏ' => 'red ribbon bow',
+            'nơ vàng' => 'gold ribbon bow',
+            'nơ hồng' => 'pink ribbon bow',
+            'phụ kiện' => 'decorative accessory',
+            'phụ kiện trang trí' => 'decorative accessory',
+            
+            // Cards
             'thiệp' => 'greeting card',
+            'thiệp chúc mừng' => 'greeting card',
             'thiệp kraft' => 'kraft greeting card',
-            'phụ kiện' => 'accessory',
-            'trang trí' => 'decorative',
+            'thiệp trắng' => 'white greeting card',
+            'thiệp màu' => 'colored greeting card',
+            'thiệp hoa' => 'floral greeting card',
         ];
         
-        $textLower = mb_strtolower($text, 'UTF-8');
+        $textLower = mb_strtolower(trim($text), 'UTF-8');
         
-        // Thử tìm exact match
+        // Thử tìm exact match hoặc partial match
         foreach ($translations as $vn => $en) {
             if (strpos($textLower, $vn) !== false) {
                 return $en;
             }
         }
         
-        // Nếu không tìm thấy, trả về text gốc (có thể đã là tiếng Anh)
+        // Nếu vẫn có ký tự tiếng Việt, trả về giá trị mặc định
+        if (preg_match('/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i', $text)) {
+            // Nếu có tiếng Việt nhưng không match, trả về giá trị mặc định
+            if (strpos($textLower, 'giấy') !== false || strpos($textLower, 'paper') !== false) {
+                return 'wrapping paper';
+            }
+            if (strpos($textLower, 'nơ') !== false || strpos($textLower, 'ruy băng') !== false || strpos($textLower, 'ribbon') !== false) {
+                return 'ribbon bow';
+            }
+            if (strpos($textLower, 'thiệp') !== false || strpos($textLower, 'card') !== false) {
+                return 'greeting card';
+            }
+            return 'decorative accessory';
+        }
+        
+        // Nếu không tìm thấy và không có tiếng Việt, trả về text gốc (có thể đã là tiếng Anh)
         return $text;
     }
 
