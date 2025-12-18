@@ -14,6 +14,14 @@ class UserAnniversary extends Model
         'user_id',
         'event_name',
         'event_date',
+        'reminder_15_days_sent_at',
+        'reminder_10_days_sent_at',
+    ];
+
+    protected $casts = [
+        'event_date' => 'date',
+        'reminder_15_days_sent_at' => 'date',
+        'reminder_10_days_sent_at' => 'date',
     ];
 
     // Relationship: một anniversary thuộc về 1 user
