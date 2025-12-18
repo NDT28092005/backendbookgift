@@ -130,8 +130,27 @@ class OrderController extends Controller
         $request->validate(['order_id' => 'required|integer']);
         $order = Order::with('items.product')->find($request->order_id);
 
-        if (!$order || $order->status !== 'pending') {
-            return response()->json(['message' => 'Không thể cập nhật đơn hàng'], 400);
+        if (!$order) {
+            return response()->json([
+                'message' => 'Đơn hàng không tồn tại',
+                'error' => 'Order not found'
+            ], 404);
+        }
+
+        // Nếu đơn hàng đã được thanh toán, trả về thành công (idempotent)
+        if ($order->status === 'paid') {
+            return response()->json([
+                'message' => 'Đơn hàng đã được thanh toán trước đó',
+                'order' => $order->fresh(['ghtkOrder']),
+                'already_paid' => true
+            ], 200);
+        }
+
+        if ($order->status !== 'pending') {
+            return response()->json([
+                'message' => 'Không thể cập nhật đơn hàng. Trạng thái hiện tại: ' . $order->status,
+                'current_status' => $order->status
+            ], 400);
         }
 
         DB::beginTransaction();
