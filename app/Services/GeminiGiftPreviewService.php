@@ -22,12 +22,47 @@ class GeminiGiftPreviewService
         $accessoryDescEn = $this->translateToEnglish($accessoryDesc);
         $cardDescEn = $this->translateToEnglish($cardDesc);
         
+        // Tạo prompt chi tiết và chân thật hơn với mô tả cụ thể
         $prompt = <<<PROMPT
-A high-quality product photography of a beautifully wrapped gift box.
-Wrapping paper: {$paperDescEn}
-Decorative accessory: {$accessoryDescEn}
-Greeting card: {$cardDescEn}
-The gift is elegantly wrapped, with soft studio lighting, clean white background, professional product photography style, realistic and detailed.
+Professional product photography of a real, beautifully wrapped gift box, highly detailed and photorealistic, e-commerce style.
+
+GIFT BOX COMPOSITION:
+- A rectangular gift box (approximately 20cm x 15cm x 10cm) completely wrapped with {$paperDescEn} wrapping paper
+- The wrapping paper is perfectly folded with crisp, clean edges and sharp corners, no wrinkles or air bubbles
+- The paper pattern and texture are clearly visible and realistic
+- A decorative {$accessoryDescEn} is elegantly placed on the center top of the gift box, naturally draped or positioned
+- The accessory is properly secured and looks realistic, with natural folds and positioning
+- A {$cardDescEn} greeting card is attached to the front or side of the gift box with a small ribbon or tape
+- The card is partially visible, showing its design and material texture
+- All three elements (wrapping paper, accessory, card) are harmoniously combined and look like a real, professionally wrapped gift
+
+PHOTOGRAPHY SPECIFICATIONS:
+- Professional e-commerce product photography style
+- Soft, diffused studio lighting from top-left and front-right, creating natural depth
+- Clean, seamless pure white background (#FFFFFF), no shadows on background
+- Shot from 45-degree angle (slightly elevated) showing the top surface and front face of the box
+- High resolution, ultra-sharp focus, 8K quality, every detail crisp and clear
+- Natural, soft shadows beneath the box for depth and realism
+- Perfect composition with the gift box centered, taking up 70% of the frame
+- Professional depth of field: box in sharp focus, background completely white
+
+MATERIAL REALISM:
+- Wrapping paper: Realistic paper texture, visible grain, accurate colors and patterns as described
+- Accessory: Realistic material texture (fabric, ribbon, or decorative element), natural appearance
+- Card: Realistic card stock texture, visible paper quality, readable but not overly detailed text
+- All materials look authentic and match real-world products
+
+TECHNICAL REQUIREMENTS:
+- Photorealistic rendering, absolutely no illustration, cartoon, or artistic style
+- Accurate colors that match the described materials exactly
+- Natural lighting with soft, realistic shadows
+- No text overlays, watermarks, labels, or branding
+- No human hands, people, or other objects in the frame
+- Single gift box as the sole subject, perfectly presented
+- No distortion, blur, or artifacts
+- Commercial product photography quality, ready for e-commerce use
+
+STYLE: Professional product photography, e-commerce photography, commercial photography, realistic, detailed, high quality, photorealistic, studio photography
 PROMPT;
 
         // Thử sử dụng Stability AI (miễn phí với giới hạn)
@@ -77,7 +112,9 @@ PROMPT;
                     Log::info('Trying endpoint', ['endpoint' => $endpoint]);
                     
                     if (strpos($endpoint, 'v1') !== false) {
-                        // API v1 format
+                        // API v1 format với negative prompt
+                        $negativePrompt = "blurry, low quality, distorted, deformed, cartoon, illustration, drawing, sketch, watermark, text overlay, multiple boxes, hands, people, cluttered background, bad lighting, oversaturated, unrealistic colors, abstract art, painting";
+                        
                         $response = Http::timeout(90)
                             ->withHeaders([
                                 'Authorization' => 'Bearer ' . $apiKey,
@@ -89,21 +126,32 @@ PROMPT;
                                     [
                                         'text' => $prompt,
                                         'weight' => 1.0
+                                    ],
+                                    [
+                                        'text' => $negativePrompt,
+                                        'weight' => -1.0
                                     ]
                                 ],
-                                'cfg_scale' => 7,
+                                'cfg_scale' => 9, // Tăng từ 7 lên 9 để tuân thủ prompt tốt hơn
                                 'height' => 1024,
                                 'width' => 1024,
                                 'samples' => 1,
-                                'steps' => 30,
+                                'steps' => 40, // Tăng từ 30 lên 40 để có chi tiết tốt hơn
+                                'style_preset' => 'photographic', // Thêm style preset cho ảnh chân thật
                             ]);
                     } else {
                         // API v2beta format - YÊU CẦU multipart/form-data
                         // Sử dụng asMultipart() với array format đúng
+                        $negativePrompt = "blurry, low quality, distorted, deformed, cartoon, illustration, drawing, sketch, watermark, text overlay, multiple boxes, hands, people, cluttered background, bad lighting, oversaturated, unrealistic colors, abstract art, painting";
+                        
                         $multipartData = [
                             [
                                 'name' => 'prompt',
                                 'contents' => $prompt
+                            ],
+                            [
+                                'name' => 'negative_prompt',
+                                'contents' => $negativePrompt
                             ],
                             [
                                 'name' => 'output_format',
@@ -120,6 +168,10 @@ PROMPT;
                             [
                                 'name' => 'model',
                                 'contents' => 'stable-core-1.6'
+                            ],
+                            [
+                                'name' => 'seed',
+                                'contents' => rand(0, 4294967295) // Random seed để có variation
                             ],
                         ];
                         
@@ -224,32 +276,64 @@ PROMPT;
     }
 
     /**
-     * Translate Vietnamese to English (simple mapping)
+     * Translate Vietnamese to English (improved mapping)
      */
     private function translateToEnglish($text)
     {
-        // Simple translation mapping for common gift terms
+        // Extended translation mapping for common gift terms
         $translations = [
+            // Wrapping papers
             'giấy kraft' => 'kraft paper',
             'giấy gói' => 'wrapping paper',
-            'nơ' => 'bow',
+            'giấy bọc' => 'wrapping paper',
+            'giấy màu' => 'colored wrapping paper',
+            'giấy hoa' => 'floral wrapping paper',
+            'giấy kẻ sọc' => 'striped wrapping paper',
+            'giấy chấm bi' => 'polka dot wrapping paper',
+            'giấy vàng' => 'gold wrapping paper',
+            'giấy đỏ' => 'red wrapping paper',
+            'giấy xanh' => 'blue wrapping paper',
+            'giấy hồng' => 'pink wrapping paper',
+            
+            // Accessories
+            'nơ' => 'ribbon bow',
+            'nơ ruy băng' => 'ribbon bow',
             'ruy băng' => 'ribbon',
+            'dây ruy băng' => 'ribbon',
+            'nơ đỏ' => 'red ribbon bow',
+            'nơ vàng' => 'gold ribbon bow',
+            'nơ hồng' => 'pink ribbon bow',
+            'phụ kiện' => 'decorative accessory',
+            'phụ kiện trang trí' => 'decorative accessory',
+            'hoa trang trí' => 'decorative flower',
+            'lá trang trí' => 'decorative leaf',
+            'quả thông' => 'pine cone',
+            'ngôi sao' => 'star',
+            
+            // Cards
             'thiệp' => 'greeting card',
+            'thiệp chúc mừng' => 'greeting card',
             'thiệp kraft' => 'kraft greeting card',
-            'phụ kiện' => 'accessory',
-            'trang trí' => 'decorative',
+            'thiệp trắng' => 'white greeting card',
+            'thiệp màu' => 'colored greeting card',
+            'thiệp hoa' => 'floral greeting card',
         ];
         
-        $textLower = mb_strtolower($text, 'UTF-8');
+        $textLower = mb_strtolower(trim($text), 'UTF-8');
         
-        // Thử tìm exact match
+        // Thử tìm exact match hoặc partial match
         foreach ($translations as $vn => $en) {
             if (strpos($textLower, $vn) !== false) {
-                return $en;
+                // Nếu text chỉ chứa từ khóa, trả về bản dịch
+                if (trim($textLower) === $vn || strpos($textLower, $vn) === 0) {
+                    return $en;
+                }
+                // Nếu text chứa từ khóa, thay thế nó
+                $textLower = str_replace($vn, $en, $textLower);
             }
         }
         
-        // Nếu không tìm thấy, trả về text gốc (có thể đã là tiếng Anh)
+        // Nếu không tìm thấy translation, trả về text gốc (có thể đã là tiếng Anh hoặc cần giữ nguyên)
         return $text;
     }
 
