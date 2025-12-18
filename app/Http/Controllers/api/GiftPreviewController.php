@@ -32,19 +32,54 @@ class GiftPreviewController extends Controller
                 'card' => $card->name
             ]);
 
-            $imageUrl = $service->generate(
-                $paper->description ?: $paper->name,
-                $accessory->description ?: $accessory->name,
-                $card->description ?: $card->name
-            );
+            try {
+                $imageUrl = $service->generate(
+                    $paper->description ?: $paper->name,
+                    $accessory->description ?: $accessory->name,
+                    $card->description ?: $card->name
+                );
 
-            Log::info('Gift preview generated successfully', ['image_url' => $imageUrl]);
+                // Đảm bảo imageUrl luôn có giá trị
+                if (empty($imageUrl)) {
+                    Log::warning('Service returned empty image URL, generating placeholder');
+                    // Tạo placeholder nếu service trả về empty
+                    $imageUrl = $service->generatePlaceholder(
+                        $paper->description ?: $paper->name,
+                        $accessory->description ?: $accessory->name,
+                        $card->description ?: $card->name
+                    );
+                }
 
-            return response()->json([
-                'success' => true,
-                'image_url' => $imageUrl,
-                'is_placeholder' => strpos($imageUrl, 'data:image/svg+xml') !== false
-            ]);
+                Log::info('Gift preview generated successfully', [
+                    'image_url' => substr($imageUrl, 0, 100) . '...', // Log một phần để tránh quá dài
+                    'is_placeholder' => strpos($imageUrl, 'data:image/svg+xml') !== false
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'image_url' => $imageUrl,
+                    'is_placeholder' => strpos($imageUrl, 'data:image/svg+xml') !== false
+                ]);
+            } catch (\Exception $e) {
+                // Nếu có lỗi trong quá trình generate, vẫn trả về placeholder
+                Log::error('Error in generate method, using placeholder fallback', [
+                    'error' => $e->getMessage()
+                ]);
+                
+                // Tạo placeholder như fallback cuối cùng
+                $imageUrl = $service->generatePlaceholder(
+                    $paper->description ?: $paper->name,
+                    $accessory->description ?: $accessory->name,
+                    $card->description ?: $card->name
+                );
+                
+                return response()->json([
+                    'success' => true,
+                    'image_url' => $imageUrl,
+                    'is_placeholder' => true,
+                    'message' => 'Đã tạo preview placeholder do lỗi kỹ thuật'
+                ]);
+            }
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,

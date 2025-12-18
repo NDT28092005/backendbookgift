@@ -70,14 +70,21 @@ PROMPT;
         
         if ($stabilityApiKey) {
             try {
-                return $this->generateWithStabilityAI($prompt);
+                $result = $this->generateWithStabilityAI($prompt);
+                // Kiểm tra nếu result hợp lệ (không null và không phải placeholder)
+                if ($result && strpos($result, 'data:image/svg+xml') === false) {
+                    return $result;
+                }
+                // Nếu result là null hoặc placeholder, fallback
+                Log::info('Stability AI returned null or placeholder, using fallback');
             } catch (\Exception $e) {
                 Log::error('Stability AI failed, using placeholder', [
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
-                // Fallback to placeholder nếu API fail
-                return $this->generatePlaceholder($paperDesc, $accessoryDesc, $cardDesc);
             }
+            // Fallback to placeholder nếu API fail hoặc trả về null
+            return $this->generatePlaceholder($paperDesc, $accessoryDesc, $cardDesc);
         }
 
         // Fallback: Tạo placeholder image hoặc sử dụng service khác
@@ -94,7 +101,7 @@ PROMPT;
             
             if (empty($apiKey)) {
                 Log::warning('Stability AI API key is empty');
-                throw new \Exception('Stability AI API key chưa được cấu hình');
+                return null; // Return null để trigger fallback
             }
 
             Log::info('Calling Stability AI', ['prompt_length' => strlen($prompt)]);
@@ -246,17 +253,21 @@ PROMPT;
                 }
             }
             
-            // Nếu tất cả endpoints đều fail
+            // Nếu tất cả endpoints đều fail, không throw exception mà return null
+            // để method generate() có thể fallback về placeholder
             $errorMsg = is_array($lastError) ? implode(', ', $lastError) : (string)$lastError;
-            throw new \Exception('Tất cả endpoints đều thất bại. Lỗi cuối: ' . $errorMsg);
+            Log::warning('All Stability AI endpoints failed', [
+                'error' => $errorMsg
+            ]);
+            return null; // Return null để trigger fallback trong generate()
             
         } catch (\Exception $e) {
             Log::error('Stability AI generation error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            // Fallback to placeholder với thông tin lỗi
-            throw $e; // Re-throw để controller có thể xử lý
+            // Return null thay vì throw để có thể fallback
+            return null;
         }
     }
 
@@ -264,7 +275,7 @@ PROMPT;
      * Generate placeholder image (fallback solution)
      * Tạo một placeholder đơn giản hoặc sử dụng service khác
      */
-    private function generatePlaceholder($paperDesc, $accessoryDesc, $cardDesc)
+    public function generatePlaceholder($paperDesc, $accessoryDesc, $cardDesc)
     {
         // Tạo SVG placeholder và convert thành base64 data URI
         // Điều này tránh vấn đề serve file từ storage
