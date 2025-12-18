@@ -240,11 +240,17 @@ class CartController extends Controller
             }
             
             $finalTotal = max(0, $total - $discountAmount);
-            // Trừ số lượng quà tặng nếu có
+            
+            // Tính giá phụ kiện và cộng vào tổng
+            $giftOptionsTotal = 0;
+            
+            // Trừ số lượng quà tặng nếu có và lấy giá
             if (isset($validated['wrapping_paper_id']) && $validated['wrapping_paper_id']) {
                 $wrappingPaper = \App\Models\WrappingPaper::lockForUpdate()->find($validated['wrapping_paper_id']);
                 if ($wrappingPaper && $wrappingPaper->quantity > 0) {
                     $wrappingPaper->decrement('quantity');
+                    // Cộng giá giấy gói vào tổng
+                    $giftOptionsTotal += (float)($wrappingPaper->price ?? 0);
                 } else {
                     DB::rollBack();
                     return response()->json(['message' => 'Giấy gói đã hết hàng'], 400);
@@ -255,6 +261,8 @@ class CartController extends Controller
                 $accessory = \App\Models\DecorativeAccessory::lockForUpdate()->find($validated['decorative_accessory_id']);
                 if ($accessory && $accessory->quantity > 0) {
                     $accessory->decrement('quantity');
+                    // Cộng giá phụ kiện vào tổng
+                    $giftOptionsTotal += (float)($accessory->price ?? 0);
                 } else {
                     DB::rollBack();
                     return response()->json(['message' => 'Phụ kiện đã hết hàng'], 400);
@@ -265,11 +273,16 @@ class CartController extends Controller
                 $cardType = \App\Models\CardType::lockForUpdate()->find($validated['card_type_id']);
                 if ($cardType && $cardType->quantity > 0) {
                     $cardType->decrement('quantity');
+                    // Cộng giá thiệp vào tổng
+                    $giftOptionsTotal += (float)($cardType->price ?? 0);
                 } else {
                     DB::rollBack();
                     return response()->json(['message' => 'Loại thiệp đã hết hàng'], 400);
                 }
             }
+            
+            // Cộng giá phụ kiện vào tổng đơn hàng
+            $finalTotal += $giftOptionsTotal;
 
             // Xử lý print_label: nhận từ request và convert sang boolean
             $printLabel = false;
