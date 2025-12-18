@@ -20,10 +20,24 @@ class GHTKService
 
     public function createShipment($order)
     {
+        // Validation: Kiểm tra items
+        if (!$order->items || $order->items->isEmpty()) {
+            throw new \Exception("Đơn hàng không có sản phẩm");
+        }
+
+        // Validation: Kiểm tra delivery_address
+        if (!$order->delivery_address) {
+            throw new \Exception("Đơn hàng thiếu địa chỉ giao hàng");
+        }
+
         // ============================================
         // 1. Tính trọng lượng
         // ============================================
         $totalWeightGrams = $order->items->sum(function ($item) {
+            if (!$item->product) {
+                \Log::warning("Order item has no product", ['item_id' => $item->id, 'order_id' => $order->id]);
+                return 200 * $item->quantity; // Default weight
+            }
             return ($item->product->weight_in_gram ?? 200) * $item->quantity;
         });
 
@@ -34,8 +48,11 @@ class GHTKService
         // ============================================
         $payload = [
             "products" => $order->items->map(function ($item) {
+                if (!$item->product) {
+                    throw new \Exception("Sản phẩm trong đơn hàng không tồn tại (item_id: {$item->id})");
+                }
                 return [
-                    "name"     => $item->product->name,
+                    "name"     => $item->product->name ?? "Sản phẩm",
                     "weight"   => (int) ($item->product->weight_in_gram ?? 200),
                     "quantity" => (int) $item->quantity,
                     "price"    => (int) $item->price,
