@@ -22,56 +22,27 @@ class GeminiGiftPreviewService
         $accessoryDescEn = $this->translateToEnglish($accessoryDesc);
         $cardDescEn = $this->translateToEnglish($cardDesc);
         
-        // Tạo prompt ngắn gọn và hiệu quả hơn (rút ngắn để tránh lỗi)
-        $prompt = "Professional product photography of a beautifully wrapped gift box, photorealistic, e-commerce style. A rectangular gift box wrapped with {$paperDescEn} wrapping paper, perfectly folded with crisp edges. A decorative {$accessoryDescEn} elegantly placed on top center. A {$cardDescEn} greeting card attached to the front. Clean white background, soft studio lighting from top-left, 45-degree angle view, high resolution, sharp focus, natural shadows. Photorealistic, no illustration or cartoon style, accurate colors, no watermarks or text overlays, single gift box as main subject.";
+        $prompt = <<<PROMPT
+A high-quality product photography of a beautifully wrapped gift box.
+Wrapping paper: {$paperDescEn}
+Decorative accessory: {$accessoryDescEn}
+Greeting card: {$cardDescEn}
+The gift is elegantly wrapped, with soft studio lighting, clean white background, professional product photography style, realistic and detailed.
+PROMPT;
 
         // Thử sử dụng Stability AI (miễn phí với giới hạn)
         $stabilityApiKey = trim(config('services.stability.key', ''));
         
-        Log::info('Checking Stability AI configuration', [
-            'has_api_key' => !empty($stabilityApiKey),
-            'api_key_length' => $stabilityApiKey ? strlen($stabilityApiKey) : 0,
-            'api_key_preview' => $stabilityApiKey ? substr($stabilityApiKey, 0, 10) . '...' : 'not set',
-            'api_key_starts_with' => $stabilityApiKey ? substr($stabilityApiKey, 0, 3) : 'none'
-        ]);
-        
-        if (!empty($stabilityApiKey)) {
+        if ($stabilityApiKey) {
             try {
-                Log::info('Attempting to generate image with Stability AI', [
-                    'prompt_length' => strlen($prompt),
-                    'paper_desc' => $paperDescEn,
-                    'accessory_desc' => $accessoryDescEn,
-                    'card_desc' => $cardDescEn
-                ]);
-                
-                $result = $this->generateWithStabilityAI($prompt);
-                
-                // Kiểm tra nếu result hợp lệ (không null và không phải placeholder)
-                if ($result && strpos($result, 'data:image/svg+xml') === false) {
-                    Log::info('Stability AI generated image successfully', [
-                        'result_url' => substr($result, 0, 100)
-                    ]);
-                    return $result;
-                }
-                
-                // Nếu result là null hoặc placeholder, fallback
-                Log::warning('Stability AI returned null or placeholder', [
-                    'result' => $result ? substr($result, 0, 50) : 'null',
-                    'is_placeholder' => $result ? (strpos($result, 'data:image/svg+xml') !== false) : false
-                ]);
+                return $this->generateWithStabilityAI($prompt);
             } catch (\Exception $e) {
-                Log::error('Stability AI failed with exception, using placeholder', [
-                    'error' => $e->getMessage(),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
-                    'trace' => $e->getTraceAsString()
+                Log::error('Stability AI failed, using placeholder', [
+                    'error' => $e->getMessage()
                 ]);
+                // Fallback to placeholder nếu API fail
+                return $this->generatePlaceholder($paperDesc, $accessoryDesc, $cardDesc);
             }
-            // Fallback to placeholder nếu API fail hoặc trả về null
-            Log::info('Falling back to placeholder image');
-            return $this->generatePlaceholder($paperDesc, $accessoryDesc, $cardDesc);
-        } else {
-            Log::warning('Stability AI API key not configured, using placeholder');
         }
 
         // Fallback: Tạo placeholder image hoặc sử dụng service khác
@@ -87,24 +58,9 @@ class GeminiGiftPreviewService
             $apiKey = trim(config('services.stability.key', ''));
             
             if (empty($apiKey)) {
-                Log::warning('Stability AI API key is empty or invalid');
-                return null; // Return null để trigger fallback
+                Log::warning('Stability AI API key is empty');
+                throw new \Exception('Stability AI API key chưa được cấu hình');
             }
-            
-            // Đảm bảo prompt không quá dài (Stability AI có giới hạn ~1000 ký tự cho prompt chính)
-            $maxPromptLength = 1000;
-            if (strlen($prompt) > $maxPromptLength) {
-                Log::warning('Prompt too long, truncating', [
-                    'original_length' => strlen($prompt),
-                    'max_length' => $maxPromptLength
-                ]);
-                $prompt = substr($prompt, 0, $maxPromptLength);
-            }
-            
-            Log::info('Using prompt for Stability AI', [
-                'prompt_length' => strlen($prompt),
-                'prompt_preview' => substr($prompt, 0, 100) . '...'
-            ]);
 
             Log::info('Calling Stability AI', ['prompt_length' => strlen($prompt)]);
             
@@ -121,16 +77,8 @@ class GeminiGiftPreviewService
                     Log::info('Trying endpoint', ['endpoint' => $endpoint]);
                     
                     if (strpos($endpoint, 'v1') !== false) {
-                        // API v1 format với negative prompt
-                        $negativePrompt = "blurry, low quality, distorted, deformed, cartoon, illustration, drawing, sketch, watermark, text overlay, multiple boxes, hands, people, cluttered background, bad lighting, oversaturated, unrealistic colors, abstract art, painting";
-                        
-                        Log::info('Calling Stability AI v1 endpoint', [
-                            'endpoint' => $endpoint,
-                            'prompt_length' => strlen($prompt),
-                            'api_key_set' => !empty($apiKey)
-                        ]);
-                        
-                        $response = Http::timeout(120)
+                        // API v1 format
+                        $response = Http::timeout(90)
                             ->withHeaders([
                                 'Authorization' => 'Bearer ' . $apiKey,
                                 'Content-Type' => 'application/json',
@@ -141,32 +89,21 @@ class GeminiGiftPreviewService
                                     [
                                         'text' => $prompt,
                                         'weight' => 1.0
-                                    ],
-                                    [
-                                        'text' => $negativePrompt,
-                                        'weight' => -1.0
                                     ]
                                 ],
-                                'cfg_scale' => 7, // Giảm xuống 7 để ổn định hơn
+                                'cfg_scale' => 7,
                                 'height' => 1024,
                                 'width' => 1024,
                                 'samples' => 1,
-                                'steps' => 30, // Giảm xuống 30 để nhanh hơn và ổn định hơn
-                                'style_preset' => 'photographic',
+                                'steps' => 30,
                             ]);
                     } else {
                         // API v2beta format - YÊU CẦU multipart/form-data
                         // Sử dụng asMultipart() với array format đúng
-                        $negativePrompt = "blurry, low quality, distorted, deformed, cartoon, illustration, drawing, sketch, watermark, text overlay, multiple boxes, hands, people, cluttered background, bad lighting, oversaturated, unrealistic colors, abstract art, painting";
-                        
                         $multipartData = [
                             [
                                 'name' => 'prompt',
                                 'contents' => $prompt
-                            ],
-                            [
-                                'name' => 'negative_prompt',
-                                'contents' => $negativePrompt
                             ],
                             [
                                 'name' => 'output_format',
@@ -184,19 +121,9 @@ class GeminiGiftPreviewService
                                 'name' => 'model',
                                 'contents' => 'stable-core-1.6'
                             ],
-                            [
-                                'name' => 'seed',
-                                'contents' => rand(0, 4294967295) // Random seed để có variation
-                            ],
                         ];
                         
-                        Log::info('Calling Stability AI v2beta endpoint', [
-                            'endpoint' => $endpoint,
-                            'prompt_length' => strlen($prompt),
-                            'api_key_set' => !empty($apiKey)
-                        ]);
-                        
-                        $response = Http::timeout(120)
+                        $response = Http::timeout(90)
                             ->withHeaders([
                                 'Authorization' => 'Bearer ' . $apiKey,
                                 'Accept' => 'image/png',
@@ -207,9 +134,7 @@ class GeminiGiftPreviewService
 
                     Log::info('Stability AI response', [
                         'status' => $response->status(),
-                        'endpoint' => $endpoint,
-                        'has_body' => !empty($response->body()),
-                        'body_length' => strlen($response->body()),
+                        'headers' => $response->headers(),
                     ]);
 
                     if ($response->successful()) {
@@ -218,108 +143,44 @@ class GeminiGiftPreviewService
                         
                         if (strpos($endpoint, 'v1') !== false) {
                             $json = $response->json();
-                            Log::info('Stability AI v1 response structure', [
-                                'has_artifacts' => isset($json['artifacts']),
-                                'artifacts_count' => isset($json['artifacts']) ? count($json['artifacts']) : 0,
-                                'has_base64' => isset($json['artifacts'][0]['base64']),
-                            ]);
-                            
                             if (isset($json['artifacts'][0]['base64'])) {
                                 $imageData = base64_decode($json['artifacts'][0]['base64']);
-                                Log::info('Decoded image data', [
-                                    'size' => strlen($imageData),
-                                    'is_valid' => !empty($imageData)
-                                ]);
-                            } else {
-                                Log::warning('No base64 data in v1 response', [
-                                    'json_keys' => array_keys($json),
-                                    'artifacts_structure' => isset($json['artifacts']) ? json_encode($json['artifacts']) : 'not set'
-                                ]);
                             }
                         } else {
-                            // v2beta trả về binary trực tiếp
                             $imageData = $response->body();
-                            Log::info('Stability AI v2beta binary response', [
-                                'size' => strlen($imageData),
-                                'is_valid' => !empty($imageData) && strlen($imageData) > 100 // Ít nhất phải có 100 bytes
-                            ]);
                         }
                         
-                        if (empty($imageData) || strlen($imageData) < 100) {
-                            Log::warning('Empty or invalid image data from Stability AI', [
-                                'data_size' => strlen($imageData ?? ''),
-                                'endpoint' => $endpoint
-                            ]);
+                        if (empty($imageData)) {
+                            Log::warning('Empty image data from Stability AI');
                             continue; // Thử endpoint tiếp theo
                         }
 
                         // Lưu file
                         $path = 'gift-previews/' . Str::uuid() . '.png';
-                        $saved = Storage::disk('public')->put($path, $imageData);
+                        Storage::disk('public')->put($path, $imageData);
 
-                        if ($saved) {
-                            Log::info('Image saved successfully', [
-                                'path' => $path,
-                                'size' => strlen($imageData),
-                                'url' => asset('storage/' . $path)
-                            ]);
-                            
-                            // Sử dụng asset() để đảm bảo URL đúng
-                            return asset('storage/' . $path);
-                        } else {
-                            Log::error('Failed to save image to storage', ['path' => $path]);
-                            continue;
-                        }
+                        Log::info('Image saved successfully', ['path' => $path]);
+                        
+                        // Sử dụng asset() để đảm bảo URL đúng
+                        return asset('storage/' . $path);
                     } else {
-                        // Lỗi từ API
-                        $errorBody = $response->body();
-                        $error = null;
-                        
-                        // Thử parse JSON error
-                        try {
-                            $error = $response->json();
-                        } catch (\Exception $e) {
-                            $error = $errorBody;
-                        }
-                        
+                        $error = $response->json();
                         // Xử lý error có thể là string hoặc array
-                        if (is_array($error)) {
-                            if (isset($error['errors']) && is_array($error['errors'])) {
-                                $lastError = implode(', ', $error['errors']);
-                            } elseif (isset($error['message'])) {
-                                $lastError = $error['message'];
-                            } elseif (isset($error['errors'])) {
-                                $lastError = is_array($error['errors']) ? implode(', ', $error['errors']) : $error['errors'];
-                            } else {
-                                $lastError = 'Unknown error: ' . json_encode($error);
-                            }
+                        if (isset($error['errors']) && is_array($error['errors'])) {
+                            $lastError = implode(', ', $error['errors']);
+                        } elseif (isset($error['message'])) {
+                            $lastError = $error['message'];
+                        } elseif (isset($error['errors'])) {
+                            $lastError = is_array($error['errors']) ? implode(', ', $error['errors']) : $error['errors'];
                         } else {
-                            $lastError = (string)$error;
+                            $lastError = 'Unknown error: ' . json_encode($error);
                         }
-                        
-                        // Tạo status text từ status code
-                        $statusCode = $response->status();
-                        $statusTexts = [
-                            400 => 'Bad Request',
-                            401 => 'Unauthorized',
-                            403 => 'Forbidden',
-                            404 => 'Not Found',
-                            429 => 'Too Many Requests',
-                            500 => 'Internal Server Error',
-                            502 => 'Bad Gateway',
-                            503 => 'Service Unavailable'
-                        ];
-                        $statusText = $statusTexts[$statusCode] ?? 'Unknown Status';
                         
                         Log::warning('Stability AI endpoint failed', [
                             'endpoint' => $endpoint,
-                            'status' => $statusCode,
-                            'status_text' => $statusText,
+                            'status' => $response->status(),
                             'error' => $lastError,
-                            'error_body' => substr($errorBody, 0, 1000), // Log 1000 ký tự đầu để debug tốt hơn
-                            'response_headers' => $response->headers(),
-                            'api_key_length' => strlen($apiKey),
-                            'prompt_length' => strlen($prompt)
+                            'full_response' => $error
                         ]);
                         continue; // Thử endpoint tiếp theo
                     }
@@ -333,21 +194,17 @@ class GeminiGiftPreviewService
                 }
             }
             
-            // Nếu tất cả endpoints đều fail, không throw exception mà return null
-            // để method generate() có thể fallback về placeholder
+            // Nếu tất cả endpoints đều fail
             $errorMsg = is_array($lastError) ? implode(', ', $lastError) : (string)$lastError;
-            Log::warning('All Stability AI endpoints failed', [
-                'error' => $errorMsg
-            ]);
-            return null; // Return null để trigger fallback trong generate()
+            throw new \Exception('Tất cả endpoints đều thất bại. Lỗi cuối: ' . $errorMsg);
             
         } catch (\Exception $e) {
             Log::error('Stability AI generation error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            // Return null thay vì throw để có thể fallback
-            return null;
+            // Fallback to placeholder với thông tin lỗi
+            throw $e; // Re-throw để controller có thể xử lý
         }
     }
 
@@ -367,64 +224,32 @@ class GeminiGiftPreviewService
     }
 
     /**
-     * Translate Vietnamese to English (improved mapping)
+     * Translate Vietnamese to English (simple mapping)
      */
     private function translateToEnglish($text)
     {
-        // Extended translation mapping for common gift terms
+        // Simple translation mapping for common gift terms
         $translations = [
-            // Wrapping papers
             'giấy kraft' => 'kraft paper',
             'giấy gói' => 'wrapping paper',
-            'giấy bọc' => 'wrapping paper',
-            'giấy màu' => 'colored wrapping paper',
-            'giấy hoa' => 'floral wrapping paper',
-            'giấy kẻ sọc' => 'striped wrapping paper',
-            'giấy chấm bi' => 'polka dot wrapping paper',
-            'giấy vàng' => 'gold wrapping paper',
-            'giấy đỏ' => 'red wrapping paper',
-            'giấy xanh' => 'blue wrapping paper',
-            'giấy hồng' => 'pink wrapping paper',
-            
-            // Accessories
-            'nơ' => 'ribbon bow',
-            'nơ ruy băng' => 'ribbon bow',
+            'nơ' => 'bow',
             'ruy băng' => 'ribbon',
-            'dây ruy băng' => 'ribbon',
-            'nơ đỏ' => 'red ribbon bow',
-            'nơ vàng' => 'gold ribbon bow',
-            'nơ hồng' => 'pink ribbon bow',
-            'phụ kiện' => 'decorative accessory',
-            'phụ kiện trang trí' => 'decorative accessory',
-            'hoa trang trí' => 'decorative flower',
-            'lá trang trí' => 'decorative leaf',
-            'quả thông' => 'pine cone',
-            'ngôi sao' => 'star',
-            
-            // Cards
             'thiệp' => 'greeting card',
-            'thiệp chúc mừng' => 'greeting card',
             'thiệp kraft' => 'kraft greeting card',
-            'thiệp trắng' => 'white greeting card',
-            'thiệp màu' => 'colored greeting card',
-            'thiệp hoa' => 'floral greeting card',
+            'phụ kiện' => 'accessory',
+            'trang trí' => 'decorative',
         ];
         
-        $textLower = mb_strtolower(trim($text), 'UTF-8');
+        $textLower = mb_strtolower($text, 'UTF-8');
         
-        // Thử tìm exact match hoặc partial match
+        // Thử tìm exact match
         foreach ($translations as $vn => $en) {
             if (strpos($textLower, $vn) !== false) {
-                // Nếu text chỉ chứa từ khóa, trả về bản dịch
-                if (trim($textLower) === $vn || strpos($textLower, $vn) === 0) {
-                    return $en;
-                }
-                // Nếu text chứa từ khóa, thay thế nó
-                $textLower = str_replace($vn, $en, $textLower);
+                return $en;
             }
         }
         
-        // Nếu không tìm thấy translation, trả về text gốc (có thể đã là tiếng Anh hoặc cần giữ nguyên)
+        // Nếu không tìm thấy, trả về text gốc (có thể đã là tiếng Anh)
         return $text;
     }
 
