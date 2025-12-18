@@ -309,10 +309,24 @@ PROMPT;
                             $lastError = (string)$error;
                         }
                         
+                        // Tạo status text từ status code
+                        $statusCode = $response->status();
+                        $statusTexts = [
+                            400 => 'Bad Request',
+                            401 => 'Unauthorized',
+                            403 => 'Forbidden',
+                            404 => 'Not Found',
+                            429 => 'Too Many Requests',
+                            500 => 'Internal Server Error',
+                            502 => 'Bad Gateway',
+                            503 => 'Service Unavailable'
+                        ];
+                        $statusText = $statusTexts[$statusCode] ?? 'Unknown Status';
+                        
                         Log::warning('Stability AI endpoint failed', [
                             'endpoint' => $endpoint,
-                            'status' => $response->status(),
-                            'status_text' => $response->statusText(),
+                            'status' => $statusCode,
+                            'status_text' => $statusText,
                             'error' => $lastError,
                             'error_body' => substr($errorBody, 0, 500), // Log 500 ký tự đầu
                             'headers' => $response->headers()
