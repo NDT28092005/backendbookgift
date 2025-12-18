@@ -58,6 +58,7 @@ Route::get('/ghtk/check/{label}', function($label, App\Services\GHTKService $ght
 });
 Route::get('/orders/{order}/print-label', [OrderController::class, 'printLabel']);
 Route::post('/orders/mark-paid', [OrderController::class, 'markPaid']);
+Route::post('/orders/{orderId}/create-ghtk-order', [OrderController::class, 'createGhtkOrder']);
 Route::post('/orders/sync-tracking-codes', [OrderController::class, 'syncTrackingCodes']);
 // Route::post('/ghtk/webhook', [GHTKWebhookController::class, 'updateStatus']);
 // Promotions

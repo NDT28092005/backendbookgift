@@ -16,7 +16,7 @@ class OrderController extends Controller
      */
     public function index(Request $request)
     {
-        $orders = Order::with(['user', 'items.product.images'])
+        $orders = Order::with(['user', 'items.product.images', 'ghtkOrder'])
             ->when($request->status, fn($q) => $q->where('status', $request->status))
             ->latest()
             ->paginate(10);
@@ -190,7 +190,49 @@ class OrderController extends Controller
             ], 500);
         }
 
-        // 🚚 Tạo vận đơn GHTK
+        // Refresh lại order
+        $order->refresh();
+
+        return response()->json([
+            'message' => 'Thanh toán thành công',
+            'order' => $order->fresh(['ghtkOrder']),
+            'tracking_code' => $order->tracking_code
+        ]);
+    }
+
+    /**
+     * 🚚 Tạo đơn GHTK cho đơn hàng (Admin)
+     */
+    public function createGhtkOrder($orderId, GHTKService $ghtkService)
+    {
+        $order = Order::with('items.product')->find($orderId);
+
+        if (!$order) {
+            return response()->json([
+                'message' => 'Đơn hàng không tồn tại',
+                'error' => 'Order not found'
+            ], 404);
+        }
+
+        // Chỉ cho phép tạo GHTK khi đơn hàng đã thanh toán
+        if ($order->status !== 'paid') {
+            return response()->json([
+                'message' => 'Chỉ có thể tạo đơn GHTK cho đơn hàng đã thanh toán. Trạng thái hiện tại: ' . $order->status,
+                'current_status' => $order->status
+            ], 400);
+        }
+
+        // Kiểm tra xem đã có đơn GHTK chưa
+        if ($order->ghtkOrder) {
+            return response()->json([
+                'message' => 'Đơn hàng đã có đơn GHTK',
+                'order' => $order->fresh(['ghtkOrder']),
+                'ghtk_order' => $order->ghtkOrder,
+                'tracking_code' => $order->tracking_code,
+                'already_exists' => true
+            ], 200);
+        }
+
         try {
             $ghtkOrder = $ghtkService->createShipment($order);
             
@@ -221,26 +263,26 @@ class OrderController extends Controller
                     }
                 }
             }
+
+            // Refresh lại order để có tracking_code mới nhất
+            $order->refresh();
+
+            return response()->json([
+                'message' => 'Tạo đơn GHTK thành công',
+                'order' => $order->fresh(['ghtkOrder']),
+                'ghtk_order' => $ghtkOrder,
+                'tracking_code' => $order->tracking_code
+            ]);
         } catch (\Exception $e) {
             \Log::error("❌ GHTK shipment creation failed", [
                 'order_id' => $order->id,
                 'error' => $e->getMessage()
             ]);
             return response()->json([
-                'message' => 'Thanh toán thành công nhưng tạo đơn GHTK thất bại',
+                'message' => 'Lỗi khi tạo đơn GHTK',
                 'error' => $e->getMessage()
             ], 500);
         }
-
-        // Refresh lại order để có tracking_code mới nhất
-        $order->refresh();
-
-        return response()->json([
-            'message' => 'Thanh toán & tạo đơn GHTK thành công',
-            'order' => $order->fresh(['ghtkOrder']),
-            'ghtk_order' => $ghtkOrder,
-            'tracking_code' => $order->tracking_code
-        ]);
     }
 
     /**

@@ -319,27 +319,6 @@ class CartController extends Controller
             $order->refresh();
             $order->load('items.product');
 
-            // Nếu là COD, tạo đơn GHTK ngay lập tức
-            if ($validated['payment_method'] === 'cod') {
-                try {
-                    $ghtkService = app(\App\Services\GHTKService::class);
-                    $ghtkOrder = $ghtkService->createShipment($order);
-                    
-                    \Log::info("GHTK order created for COD", [
-                        'order_id' => $order->id,
-                        'ghtk_order_id' => $ghtkOrder->id ?? null,
-                        'label_id' => $ghtkOrder->label_id ?? null
-                    ]);
-                } catch (\Exception $e) {
-                    \Log::error("Failed to create GHTK order for COD", [
-                        'order_id' => $order->id,
-                        'error' => $e->getMessage()
-                    ]);
-                    // Không throw error, vẫn cho phép tạo order thành công
-                    // Admin có thể tạo GHTK order sau
-                }
-            }
-
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
