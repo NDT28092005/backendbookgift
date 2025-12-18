@@ -68,23 +68,49 @@ PROMPT;
         // Thử sử dụng Stability AI (miễn phí với giới hạn)
         $stabilityApiKey = config('services.stability.key');
         
+        Log::info('Checking Stability AI configuration', [
+            'has_api_key' => !empty($stabilityApiKey),
+            'api_key_length' => $stabilityApiKey ? strlen($stabilityApiKey) : 0,
+            'api_key_preview' => $stabilityApiKey ? substr($stabilityApiKey, 0, 10) . '...' : 'not set'
+        ]);
+        
         if ($stabilityApiKey) {
             try {
+                Log::info('Attempting to generate image with Stability AI', [
+                    'prompt_length' => strlen($prompt),
+                    'paper_desc' => $paperDescEn,
+                    'accessory_desc' => $accessoryDescEn,
+                    'card_desc' => $cardDescEn
+                ]);
+                
                 $result = $this->generateWithStabilityAI($prompt);
+                
                 // Kiểm tra nếu result hợp lệ (không null và không phải placeholder)
                 if ($result && strpos($result, 'data:image/svg+xml') === false) {
+                    Log::info('Stability AI generated image successfully', [
+                        'result_url' => substr($result, 0, 100)
+                    ]);
                     return $result;
                 }
+                
                 // Nếu result là null hoặc placeholder, fallback
-                Log::info('Stability AI returned null or placeholder, using fallback');
+                Log::warning('Stability AI returned null or placeholder', [
+                    'result' => $result ? substr($result, 0, 50) : 'null',
+                    'is_placeholder' => $result ? (strpos($result, 'data:image/svg+xml') !== false) : false
+                ]);
             } catch (\Exception $e) {
-                Log::error('Stability AI failed, using placeholder', [
+                Log::error('Stability AI failed with exception, using placeholder', [
                     'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
                     'trace' => $e->getTraceAsString()
                 ]);
             }
             // Fallback to placeholder nếu API fail hoặc trả về null
+            Log::info('Falling back to placeholder image');
             return $this->generatePlaceholder($paperDesc, $accessoryDesc, $cardDesc);
+        } else {
+            Log::warning('Stability AI API key not configured, using placeholder');
         }
 
         // Fallback: Tạo placeholder image hoặc sử dụng service khác
@@ -193,7 +219,9 @@ PROMPT;
 
                     Log::info('Stability AI response', [
                         'status' => $response->status(),
-                        'headers' => $response->headers(),
+                        'endpoint' => $endpoint,
+                        'has_body' => !empty($response->body()),
+                        'body_length' => strlen($response->body()),
                     ]);
 
                     if ($response->successful()) {
@@ -202,44 +230,92 @@ PROMPT;
                         
                         if (strpos($endpoint, 'v1') !== false) {
                             $json = $response->json();
+                            Log::info('Stability AI v1 response structure', [
+                                'has_artifacts' => isset($json['artifacts']),
+                                'artifacts_count' => isset($json['artifacts']) ? count($json['artifacts']) : 0,
+                                'has_base64' => isset($json['artifacts'][0]['base64']),
+                            ]);
+                            
                             if (isset($json['artifacts'][0]['base64'])) {
                                 $imageData = base64_decode($json['artifacts'][0]['base64']);
+                                Log::info('Decoded image data', [
+                                    'size' => strlen($imageData),
+                                    'is_valid' => !empty($imageData)
+                                ]);
+                            } else {
+                                Log::warning('No base64 data in v1 response', [
+                                    'json_keys' => array_keys($json),
+                                    'artifacts_structure' => isset($json['artifacts']) ? json_encode($json['artifacts']) : 'not set'
+                                ]);
                             }
                         } else {
+                            // v2beta trả về binary trực tiếp
                             $imageData = $response->body();
+                            Log::info('Stability AI v2beta binary response', [
+                                'size' => strlen($imageData),
+                                'is_valid' => !empty($imageData) && strlen($imageData) > 100 // Ít nhất phải có 100 bytes
+                            ]);
                         }
                         
-                        if (empty($imageData)) {
-                            Log::warning('Empty image data from Stability AI');
+                        if (empty($imageData) || strlen($imageData) < 100) {
+                            Log::warning('Empty or invalid image data from Stability AI', [
+                                'data_size' => strlen($imageData ?? ''),
+                                'endpoint' => $endpoint
+                            ]);
                             continue; // Thử endpoint tiếp theo
                         }
 
                         // Lưu file
-        $path = 'gift-previews/' . Str::uuid() . '.png';
-                        Storage::disk('public')->put($path, $imageData);
+                        $path = 'gift-previews/' . Str::uuid() . '.png';
+                        $saved = Storage::disk('public')->put($path, $imageData);
 
-                        Log::info('Image saved successfully', ['path' => $path]);
-                        
-                        // Sử dụng asset() để đảm bảo URL đúng
-                        return asset('storage/' . $path);
-                    } else {
-                        $error = $response->json();
-                        // Xử lý error có thể là string hoặc array
-                        if (isset($error['errors']) && is_array($error['errors'])) {
-                            $lastError = implode(', ', $error['errors']);
-                        } elseif (isset($error['message'])) {
-                            $lastError = $error['message'];
-                        } elseif (isset($error['errors'])) {
-                            $lastError = is_array($error['errors']) ? implode(', ', $error['errors']) : $error['errors'];
+                        if ($saved) {
+                            Log::info('Image saved successfully', [
+                                'path' => $path,
+                                'size' => strlen($imageData),
+                                'url' => asset('storage/' . $path)
+                            ]);
+                            
+                            // Sử dụng asset() để đảm bảo URL đúng
+                            return asset('storage/' . $path);
                         } else {
-                            $lastError = 'Unknown error: ' . json_encode($error);
+                            Log::error('Failed to save image to storage', ['path' => $path]);
+                            continue;
+                        }
+                    } else {
+                        // Lỗi từ API
+                        $errorBody = $response->body();
+                        $error = null;
+                        
+                        // Thử parse JSON error
+                        try {
+                            $error = $response->json();
+                        } catch (\Exception $e) {
+                            $error = $errorBody;
+                        }
+                        
+                        // Xử lý error có thể là string hoặc array
+                        if (is_array($error)) {
+                            if (isset($error['errors']) && is_array($error['errors'])) {
+                                $lastError = implode(', ', $error['errors']);
+                            } elseif (isset($error['message'])) {
+                                $lastError = $error['message'];
+                            } elseif (isset($error['errors'])) {
+                                $lastError = is_array($error['errors']) ? implode(', ', $error['errors']) : $error['errors'];
+                            } else {
+                                $lastError = 'Unknown error: ' . json_encode($error);
+                            }
+                        } else {
+                            $lastError = (string)$error;
                         }
                         
                         Log::warning('Stability AI endpoint failed', [
                             'endpoint' => $endpoint,
                             'status' => $response->status(),
+                            'status_text' => $response->statusText(),
                             'error' => $lastError,
-                            'full_response' => $error
+                            'error_body' => substr($errorBody, 0, 500), // Log 500 ký tự đầu
+                            'headers' => $response->headers()
                         ]);
                         continue; // Thử endpoint tiếp theo
                     }

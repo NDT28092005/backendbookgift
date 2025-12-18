@@ -50,15 +50,21 @@ class GiftPreviewController extends Controller
                     );
                 }
 
-                Log::info('Gift preview generated successfully', [
-                    'image_url' => substr($imageUrl, 0, 100) . '...', // Log một phần để tránh quá dài
-                    'is_placeholder' => strpos($imageUrl, 'data:image/svg+xml') !== false
+                $isPlaceholder = strpos($imageUrl, 'data:image/svg+xml') !== false;
+                
+                Log::info('Gift preview generated', [
+                    'image_url_preview' => substr($imageUrl, 0, 100) . '...',
+                    'is_placeholder' => $isPlaceholder,
+                    'has_stability_key' => !empty(config('services.stability.key'))
                 ]);
 
                 return response()->json([
                     'success' => true,
                     'image_url' => $imageUrl,
-                    'is_placeholder' => strpos($imageUrl, 'data:image/svg+xml') !== false
+                    'is_placeholder' => $isPlaceholder,
+                    'message' => $isPlaceholder 
+                        ? 'Đang sử dụng preview placeholder. Vui lòng cấu hình STABILITY_AI_API_KEY trong file .env để tạo ảnh thật.' 
+                        : 'Preview đã được tạo thành công'
                 ]);
             } catch (\Exception $e) {
                 // Nếu có lỗi trong quá trình generate, vẫn trả về placeholder
