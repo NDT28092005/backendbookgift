@@ -22,59 +22,20 @@ class GeminiGiftPreviewService
         $accessoryDescEn = $this->translateToEnglish($accessoryDesc);
         $cardDescEn = $this->translateToEnglish($cardDesc);
         
-        // Tạo prompt chi tiết và chân thật hơn với mô tả cụ thể
-        $prompt = <<<PROMPT
-Professional product photography of a real, beautifully wrapped gift box, highly detailed and photorealistic, e-commerce style.
-
-GIFT BOX COMPOSITION:
-- A rectangular gift box (approximately 20cm x 15cm x 10cm) completely wrapped with {$paperDescEn} wrapping paper
-- The wrapping paper is perfectly folded with crisp, clean edges and sharp corners, no wrinkles or air bubbles
-- The paper pattern and texture are clearly visible and realistic
-- A decorative {$accessoryDescEn} is elegantly placed on the center top of the gift box, naturally draped or positioned
-- The accessory is properly secured and looks realistic, with natural folds and positioning
-- A {$cardDescEn} greeting card is attached to the front or side of the gift box with a small ribbon or tape
-- The card is partially visible, showing its design and material texture
-- All three elements (wrapping paper, accessory, card) are harmoniously combined and look like a real, professionally wrapped gift
-
-PHOTOGRAPHY SPECIFICATIONS:
-- Professional e-commerce product photography style
-- Soft, diffused studio lighting from top-left and front-right, creating natural depth
-- Clean, seamless pure white background (#FFFFFF), no shadows on background
-- Shot from 45-degree angle (slightly elevated) showing the top surface and front face of the box
-- High resolution, ultra-sharp focus, 8K quality, every detail crisp and clear
-- Natural, soft shadows beneath the box for depth and realism
-- Perfect composition with the gift box centered, taking up 70% of the frame
-- Professional depth of field: box in sharp focus, background completely white
-
-MATERIAL REALISM:
-- Wrapping paper: Realistic paper texture, visible grain, accurate colors and patterns as described
-- Accessory: Realistic material texture (fabric, ribbon, or decorative element), natural appearance
-- Card: Realistic card stock texture, visible paper quality, readable but not overly detailed text
-- All materials look authentic and match real-world products
-
-TECHNICAL REQUIREMENTS:
-- Photorealistic rendering, absolutely no illustration, cartoon, or artistic style
-- Accurate colors that match the described materials exactly
-- Natural lighting with soft, realistic shadows
-- No text overlays, watermarks, labels, or branding
-- No human hands, people, or other objects in the frame
-- Single gift box as the sole subject, perfectly presented
-- No distortion, blur, or artifacts
-- Commercial product photography quality, ready for e-commerce use
-
-STYLE: Professional product photography, e-commerce photography, commercial photography, realistic, detailed, high quality, photorealistic, studio photography
-PROMPT;
+        // Tạo prompt ngắn gọn và hiệu quả hơn (rút ngắn để tránh lỗi)
+        $prompt = "Professional product photography of a beautifully wrapped gift box, photorealistic, e-commerce style. A rectangular gift box wrapped with {$paperDescEn} wrapping paper, perfectly folded with crisp edges. A decorative {$accessoryDescEn} elegantly placed on top center. A {$cardDescEn} greeting card attached to the front. Clean white background, soft studio lighting from top-left, 45-degree angle view, high resolution, sharp focus, natural shadows. Photorealistic, no illustration or cartoon style, accurate colors, no watermarks or text overlays, single gift box as main subject.";
 
         // Thử sử dụng Stability AI (miễn phí với giới hạn)
-        $stabilityApiKey = config('services.stability.key');
+        $stabilityApiKey = trim(config('services.stability.key', ''));
         
         Log::info('Checking Stability AI configuration', [
             'has_api_key' => !empty($stabilityApiKey),
             'api_key_length' => $stabilityApiKey ? strlen($stabilityApiKey) : 0,
-            'api_key_preview' => $stabilityApiKey ? substr($stabilityApiKey, 0, 10) . '...' : 'not set'
+            'api_key_preview' => $stabilityApiKey ? substr($stabilityApiKey, 0, 10) . '...' : 'not set',
+            'api_key_starts_with' => $stabilityApiKey ? substr($stabilityApiKey, 0, 3) : 'none'
         ]);
         
-        if ($stabilityApiKey) {
+        if (!empty($stabilityApiKey)) {
             try {
                 Log::info('Attempting to generate image with Stability AI', [
                     'prompt_length' => strlen($prompt),
@@ -123,12 +84,27 @@ PROMPT;
     private function generateWithStabilityAI($prompt)
     {
         try {
-            $apiKey = config('services.stability.key');
+            $apiKey = trim(config('services.stability.key', ''));
             
             if (empty($apiKey)) {
-                Log::warning('Stability AI API key is empty');
+                Log::warning('Stability AI API key is empty or invalid');
                 return null; // Return null để trigger fallback
             }
+            
+            // Đảm bảo prompt không quá dài (Stability AI có giới hạn ~1000 ký tự cho prompt chính)
+            $maxPromptLength = 1000;
+            if (strlen($prompt) > $maxPromptLength) {
+                Log::warning('Prompt too long, truncating', [
+                    'original_length' => strlen($prompt),
+                    'max_length' => $maxPromptLength
+                ]);
+                $prompt = substr($prompt, 0, $maxPromptLength);
+            }
+            
+            Log::info('Using prompt for Stability AI', [
+                'prompt_length' => strlen($prompt),
+                'prompt_preview' => substr($prompt, 0, 100) . '...'
+            ]);
 
             Log::info('Calling Stability AI', ['prompt_length' => strlen($prompt)]);
             
@@ -148,7 +124,13 @@ PROMPT;
                         // API v1 format với negative prompt
                         $negativePrompt = "blurry, low quality, distorted, deformed, cartoon, illustration, drawing, sketch, watermark, text overlay, multiple boxes, hands, people, cluttered background, bad lighting, oversaturated, unrealistic colors, abstract art, painting";
                         
-                        $response = Http::timeout(90)
+                        Log::info('Calling Stability AI v1 endpoint', [
+                            'endpoint' => $endpoint,
+                            'prompt_length' => strlen($prompt),
+                            'api_key_set' => !empty($apiKey)
+                        ]);
+                        
+                        $response = Http::timeout(120)
                             ->withHeaders([
                                 'Authorization' => 'Bearer ' . $apiKey,
                                 'Content-Type' => 'application/json',
@@ -165,12 +147,12 @@ PROMPT;
                                         'weight' => -1.0
                                     ]
                                 ],
-                                'cfg_scale' => 9, // Tăng từ 7 lên 9 để tuân thủ prompt tốt hơn
+                                'cfg_scale' => 7, // Giảm xuống 7 để ổn định hơn
                                 'height' => 1024,
                                 'width' => 1024,
                                 'samples' => 1,
-                                'steps' => 40, // Tăng từ 30 lên 40 để có chi tiết tốt hơn
-                                'style_preset' => 'photographic', // Thêm style preset cho ảnh chân thật
+                                'steps' => 30, // Giảm xuống 30 để nhanh hơn và ổn định hơn
+                                'style_preset' => 'photographic',
                             ]);
                     } else {
                         // API v2beta format - YÊU CẦU multipart/form-data
@@ -208,7 +190,13 @@ PROMPT;
                             ],
                         ];
                         
-                        $response = Http::timeout(90)
+                        Log::info('Calling Stability AI v2beta endpoint', [
+                            'endpoint' => $endpoint,
+                            'prompt_length' => strlen($prompt),
+                            'api_key_set' => !empty($apiKey)
+                        ]);
+                        
+                        $response = Http::timeout(120)
                             ->withHeaders([
                                 'Authorization' => 'Bearer ' . $apiKey,
                                 'Accept' => 'image/png',
@@ -328,8 +316,10 @@ PROMPT;
                             'status' => $statusCode,
                             'status_text' => $statusText,
                             'error' => $lastError,
-                            'error_body' => substr($errorBody, 0, 500), // Log 500 ký tự đầu
-                            'headers' => $response->headers()
+                            'error_body' => substr($errorBody, 0, 1000), // Log 1000 ký tự đầu để debug tốt hơn
+                            'response_headers' => $response->headers(),
+                            'api_key_length' => strlen($apiKey),
+                            'prompt_length' => strlen($prompt)
                         ]);
                         continue; // Thử endpoint tiếp theo
                     }
