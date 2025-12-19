@@ -106,6 +106,8 @@ class ProductController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
+            'short_description' => 'nullable|string',
+            'full_description' => 'nullable|string',
             'price' => 'required|numeric',
             'stock_quantity' => 'nullable|integer',
             'category_id' => 'nullable|exists:categories,id',
@@ -122,6 +124,8 @@ class ProductController extends Controller
             // Cập nhật thông tin sản phẩm cơ bản
             $product->update([
                 'name' => $request->name,
+                'short_description' => $request->short_description ?? null,
+                'full_description' => $request->full_description ?? null,
                 'price' => $request->price,
                 'stock_quantity' => $request->stock_quantity ?? 0,
                 'category_id' => $request->category_id,
