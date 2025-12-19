@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ReturnRequest;
 use Illuminate\Support\Facades\DB;
 use App\Services\GHTKService;
 
@@ -623,6 +624,20 @@ class OrderController extends Controller
                 'cancelled_at' => now(),
                 'cancellation_reason' => $cancellationReason,
             ]);
+
+            // Tự động tạo ReturnRequest khi khách hàng hủy đơn để hiển thị trong admin/returns
+            // Chỉ tạo nếu chưa có ReturnRequest nào cho order này
+            $existingReturn = ReturnRequest::where('order_id', $order->id)->first();
+            if (!$existingReturn) {
+                ReturnRequest::create([
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'type' => 'refund', // Hủy đơn luôn là hoàn tiền
+                    'reason' => $cancellationReason,
+                    'note' => 'Đơn hàng bị hủy bởi khách hàng',
+                    'status' => 'requested', // Trạng thái chờ duyệt
+                ]);
+            }
 
             DB::commit();
         } catch (\Exception $e) {
