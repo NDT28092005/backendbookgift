@@ -161,6 +161,9 @@ class ChatController extends Controller
                     'timestamp' => $msg->created_at,
                     'products' => isset($msg->meta['products']) ? $msg->meta['products'] : null,
                     'showOccasions' => isset($msg->meta['showOccasions']) ? $msg->meta['showOccasions'] : false,
+                    'showCategories' => isset($msg->meta['showCategories']) ? $msg->meta['showCategories'] : false,
+                    'category_id' => isset($msg->meta['categoryId']) ? $msg->meta['categoryId'] : null,
+                    'category_name' => isset($msg->meta['categoryName']) ? $msg->meta['categoryName'] : null,
                 ];
             });
 
@@ -187,6 +190,9 @@ class ChatController extends Controller
             'type' => 'required|in:user,bot',
             'products' => 'nullable|array',
             'showOccasions' => 'nullable|boolean',
+            'showCategories' => 'nullable|boolean',
+            'categoryId' => 'nullable|integer',
+            'categoryName' => 'nullable|string',
         ]);
 
         // Kiểm tra conversation thuộc về user
@@ -207,6 +213,9 @@ class ChatController extends Controller
             'meta' => [
                 'products' => $request->products ?? null,
                 'showOccasions' => $request->showOccasions ?? false,
+                'showCategories' => $request->showCategories ?? false,
+                'categoryId' => $request->categoryId ?? null,
+                'categoryName' => $request->categoryName ?? null,
             ]
         ]);
 
@@ -217,6 +226,9 @@ class ChatController extends Controller
             'timestamp' => $message->created_at,
             'products' => $request->products ?? null,
             'showOccasions' => $request->showOccasions ?? false,
+            'showCategories' => $request->showCategories ?? false,
+            'categoryId' => $request->categoryId ?? null,
+            'categoryName' => $request->categoryName ?? null,
         ]);
     }
 
@@ -252,6 +264,9 @@ class ChatController extends Controller
                     'timestamp' => $msg->created_at,
                     'products' => isset($msg->meta['products']) ? $msg->meta['products'] : null,
                     'showOccasions' => isset($msg->meta['showOccasions']) ? $msg->meta['showOccasions'] : false,
+                    'showCategories' => isset($msg->meta['showCategories']) ? $msg->meta['showCategories'] : false,
+                    'category_id' => isset($msg->meta['categoryId']) ? $msg->meta['categoryId'] : null,
+                    'category_name' => isset($msg->meta['categoryName']) ? $msg->meta['categoryName'] : null,
                 ];
             });
 
