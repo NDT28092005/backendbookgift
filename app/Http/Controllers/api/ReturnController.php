@@ -183,6 +183,14 @@ class ReturnController extends Controller
             ], 400);
         }
 
+        // Kiểm tra: COD không cần hoàn tiền (chưa thanh toán)
+        if ($return->order && $return->order->payment_method === 'cod') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn hàng COD không cần hoàn tiền (chưa thanh toán)'
+            ], 400);
+        }
+
         if ($return->status !== 'received') {
             return response()->json([
                 'success' => false,

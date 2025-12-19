@@ -629,14 +629,32 @@ class OrderController extends Controller
             // Chỉ tạo nếu chưa có ReturnRequest nào cho order này
             $existingReturn = ReturnRequest::where('order_id', $order->id)->first();
             if (!$existingReturn) {
-                ReturnRequest::create([
-                    'order_id' => $order->id,
-                    'user_id' => $user->id,
-                    'type' => 'refund', // Hủy đơn luôn là hoàn tiền
-                    'reason' => $cancellationReason,
-                    'note' => 'Đơn hàng bị hủy bởi khách hàng',
-                    'status' => 'requested', // Trạng thái chờ duyệt
-                ]);
+                $paymentMethod = $order->payment_method ?? 'cod';
+                
+                // Phân biệt theo phương thức thanh toán:
+                // - COD: chỉ yêu cầu hủy (chưa thanh toán, không cần hoàn tiền)
+                // - Bank transfer/Momo: yêu cầu hoàn tiền (đã thanh toán)
+                if ($paymentMethod === 'cod') {
+                    // COD: chỉ yêu cầu hủy đơn, không cần hoàn tiền
+                    ReturnRequest::create([
+                        'order_id' => $order->id,
+                        'user_id' => $user->id,
+                        'type' => 'refund', // Vẫn dùng type refund để hiển thị trong danh sách
+                        'reason' => $cancellationReason,
+                        'note' => 'Yêu cầu hủy đơn - COD (chưa thanh toán, không cần hoàn tiền)',
+                        'status' => 'requested',
+                    ]);
+                } else {
+                    // Bank transfer hoặc Momo: yêu cầu hoàn tiền
+                    ReturnRequest::create([
+                        'order_id' => $order->id,
+                        'user_id' => $user->id,
+                        'type' => 'refund',
+                        'reason' => $cancellationReason,
+                        'note' => 'Yêu cầu hoàn tiền - Đơn hàng bị hủy bởi khách hàng',
+                        'status' => 'requested',
+                    ]);
+                }
             }
 
             DB::commit();
