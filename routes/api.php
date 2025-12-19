@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/product-chatbot/start', [ChatController::class, 'startProductChat']);
     Route::post('/chat/product-chatbot/save', [ChatController::class, 'saveProductChatMessage']);
     Route::get('/chat/product-chatbot/history/{id}', [ChatController::class, 'getProductChatHistory']);
+    Route::delete('/chat/product-chatbot/clear', [ChatController::class, 'clearProductChatHistory']);
 });
 
 // Product chatbot - public endpoint (có thể thêm auth nếu cần)

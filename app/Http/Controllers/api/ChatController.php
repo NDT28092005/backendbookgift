@@ -272,4 +272,34 @@ class ChatController extends Controller
 
         return response()->json($messages);
     }
+
+    /**
+     * Xóa tất cả messages trong conversation của product chatbot
+     */
+    public function clearProductChatHistory(Request $request)
+    {
+        $user = $request->user();
+        
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Tìm conversation của user
+        $conversation = Conversation::where('user_id', $user->id)
+            ->where('title', 'product_chatbot')
+            ->first();
+
+        if (!$conversation) {
+            return response()->json(['error' => 'Conversation not found'], 404);
+        }
+
+        // Xóa tất cả messages trong conversation
+        $deletedCount = Message::where('conversation_id', $conversation->id)->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã xóa lịch sử chat thành công',
+            'deleted_count' => $deletedCount
+        ]);
+    }
 }
