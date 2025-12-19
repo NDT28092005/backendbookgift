@@ -312,7 +312,9 @@ class CartController extends Controller
                 'loyalty_points_used' => $loyaltyPointsUsed,
                 'print_label'       => $printLabel,
                 'payment_method'    => $validated['payment_method'],
-                'status'            => 'pending', // COD và các phương thức khác đều là pending
+                // COD: status = 'processing' (có thể đẩy lên GHTK ngay, không cần chờ thanh toán)
+                // Bank transfer/Momo: status = 'pending' (chờ thanh toán)
+                'status'            => $validated['payment_method'] === 'cod' ? 'processing' : 'pending',
                 'expires_at'        => $validated['payment_method'] === 'cod' ? null : now()->addMinutes(5), // COD không có thời hạn thanh toán
             ]);
 

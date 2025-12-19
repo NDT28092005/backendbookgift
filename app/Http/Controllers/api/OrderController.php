@@ -215,11 +215,15 @@ class OrderController extends Controller
                 ], 404);
             }
 
-            // Chỉ cho phép tạo GHTK khi đơn hàng đã thanh toán
-            if ($order->status !== 'paid') {
+            // Cho phép tạo GHTK khi:
+            // 1. Đơn hàng đã thanh toán (paid)
+            // 2. Hoặc đơn hàng COD (processing) - vì COD không cần thanh toán trước
+            $allowedStatuses = ['paid', 'processing'];
+            if (!in_array($order->status, $allowedStatuses, true)) {
                 return response()->json([
-                    'message' => 'Chỉ có thể tạo đơn GHTK cho đơn hàng đã thanh toán. Trạng thái hiện tại: ' . $order->status,
-                    'current_status' => $order->status
+                    'message' => 'Chỉ có thể tạo đơn GHTK cho đơn hàng đã thanh toán hoặc đơn COD. Trạng thái hiện tại: ' . $order->status,
+                    'current_status' => $order->status,
+                    'payment_method' => $order->payment_method ?? 'unknown'
                 ], 400);
             }
 
