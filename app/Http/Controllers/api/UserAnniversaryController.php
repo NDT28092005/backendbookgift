@@ -36,6 +36,10 @@ class UserAnniversaryController extends Controller
         ]);
 
         $anniversary = $user->anniversaries()->create($data);
+        
+        // Load relationship và kiểm tra gửi email nếu trong vòng 15-10 ngày
+        $anniversary->load('user');
+        $anniversary->checkAndSendReminderEmail();
 
         return response()->json($anniversary, 201);
     }
@@ -54,7 +58,17 @@ class UserAnniversaryController extends Controller
             'event_date' => 'required|date',
         ]);
 
+        // Nếu event_date thay đổi, reset tracking fields để có thể gửi lại email
+        if ($anniversary->event_date != $data['event_date']) {
+            $data['reminder_15_days_sent_at'] = null;
+            $data['reminder_10_days_sent_at'] = null;
+        }
+
         $anniversary->update($data);
+        
+        // Load relationship và kiểm tra gửi email nếu trong vòng 15-10 ngày
+        $anniversary->load('user');
+        $anniversary->checkAndSendReminderEmail();
 
         return response()->json($anniversary);
     }
