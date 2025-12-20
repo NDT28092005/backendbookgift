@@ -58,9 +58,37 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
+            'options' => extension_loaded('pdo_mysql') ? (function() {
+                $options = [];
+                $host = env('DB_HOST', '127.0.0.1');
+                $isAzure = strpos($host, 'azure') !== false || strpos($host, '.database.azure.com') !== false;
+                
+                // Azure MySQL yêu cầu SSL
+                if ($isAzure) {
+                    $sslCa = env('MYSQL_ATTR_SSL_CA');
+                    if (!$sslCa) {
+                        $certPath = base_path('DigiCertGlobalRootG2.crt.pem');
+                        if (file_exists($certPath)) {
+                            $sslCa = $certPath;
+                        }
+                    }
+                    
+                    if ($sslCa) {
+                        $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+                    }
+                    
+                    // Disable server certificate verification (Azure MySQL thường cần)
+                    $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT', false);
+                } else {
+                    // Non-Azure MySQL: chỉ dùng SSL nếu được config
+                    $sslCa = env('MYSQL_ATTR_SSL_CA');
+                    if ($sslCa) {
+                        $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+                    }
+                }
+                
+                return array_filter($options);
+            })() : [],
         ],
 
         'pgsql' => [
