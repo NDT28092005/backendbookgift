@@ -5,7 +5,6 @@ use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use App\Mail\AnniversaryReminderMail;
 use App\Models\UserAnniversary;
-use App\Http\Controllers\ProductShareController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -20,9 +19,6 @@ use App\Http\Controllers\ProductShareController;
 Route::get('/', function () {
     return view('welcome');
 });
-
-// Route để serve Open Graph meta tags cho Facebook crawler
-Route::get('/share/product/{id}', [ProductShareController::class, 'show'])->name('product.share');
 
 // DEBUG ROUTES - Chỉ dùng trong môi trường development
 if (app()->environment(['local', 'testing'])) {
