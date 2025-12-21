@@ -78,26 +78,43 @@ class ProductShareController extends Controller
         $frontendUrl = rtrim($frontendBaseUrl, '/') . "/products/{$id}";
         
         // Check if it's a bot/crawler
-        $userAgent = request()->userAgent();
-        $isBot = preg_match('/facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|Slackbot|SkypeUriPreview|Applebot|Googlebot|bingbot|YandexBot|Baiduspider/i', $userAgent);
+        $userAgent = request()->userAgent() ?? '';
+        $isBot = preg_match('/facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|Slackbot|SkypeUriPreview|Applebot|Googlebot|bingbot|YandexBot|Baiduspider|facebook/i', $userAgent);
         
-        // If it's a bot, serve the HTML with meta tags
+        // Also check for _escaped_fragment_ parameter (used by some crawlers)
+        $hasEscapedFragment = request()->has('_escaped_fragment_');
+        
+        // If it's a bot or has escaped fragment, serve the HTML with meta tags
         // Otherwise, redirect to frontend
-        if ($isBot) {
-            return view('product-share', compact(
-                'product',
-                'imageUrl',
-                'richDescription',
-                'priceText',
-                'averageRating',
-                'reviewCount',
-                'currentUrl',
-                'frontendUrl'
-            ));
+        if ($isBot || $hasEscapedFragment) {
+            try {
+                return view('product-share', compact(
+                    'product',
+                    'imageUrl',
+                    'richDescription',
+                    'priceText',
+                    'averageRating',
+                    'reviewCount',
+                    'currentUrl',
+                    'frontendUrl'
+                ));
+            } catch (\Exception $e) {
+                // If view fails, return simple HTML with meta tags
+                return response()->view('product-share', compact(
+                    'product',
+                    'imageUrl',
+                    'richDescription',
+                    'priceText',
+                    'averageRating',
+                    'reviewCount',
+                    'currentUrl',
+                    'frontendUrl'
+                ), 200)->header('Content-Type', 'text/html');
+            }
         }
         
         // Redirect normal users to frontend
-        return redirect($frontendUrl);
+        return redirect($frontendUrl, 302);
     }
 }
 

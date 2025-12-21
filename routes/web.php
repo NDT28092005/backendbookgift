@@ -22,7 +22,12 @@ Route::get('/', function () {
 });
 
 // Product share route for Facebook/Messenger crawlers
-Route::get('/products/{id}/share', [ProductShareController::class, 'share'])->name('product.share');
+// Use minimal middleware (no session) to avoid storage issues
+Route::middleware([
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+])->group(function () {
+    Route::get('/products/{id}/share', [ProductShareController::class, 'share'])->name('product.share');
+});
 
 // DEBUG ROUTES - Chỉ dùng trong môi trường development
 if (app()->environment(['local', 'testing'])) {
